@@ -136,13 +136,13 @@ q <- p + geom_smooth(method = "lm", formula = y ~ splines::bs(x, degree=3))
 q
 ```
 
-In this form the uncertainty in the first few data points is much clearer, and the dip pattern they fitted is much less convincing. I would argue that a linear regression fits the data just as well and gives an increase of 0.87 per year.
+In this form the uncertainty in the first few data points is much clearer, and the dip pattern they fitted is much less convincing. I would argue that a linear regression fits the data just as well and gives an increase of ~0.04 years per year.
 
 ```{r}
 q <- p + 
     geom_smooth(method = "lm", colour="red") + 
     annotate("text", x = 1975, y = 121,
-             label = paste("gradient =",format(coef(lm(death_year~age_inyears, age.data))[2], digits=3)))
+             label = paste("gradient =",format(coef(lm(age_inyears ~ death_year, age.data))[2], digits=2)))
 q
 
 ```
