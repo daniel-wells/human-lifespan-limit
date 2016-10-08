@@ -1,0 +1,150 @@
+---
+title: "Reanalysis of the evidence for a limit to human lifespan"
+author: "Daniel Wells"
+date: "`r Sys.Date()`"
+output: 
+  html_notebook: 
+    code_folding: hide
+    theme: cosmo
+---
+
+<style>
+  .main-container {
+    max-width: 700px !important;
+  }
+</style>
+
+<script src="http://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+Recently a paper was published in the journal Nature titled "[Evidence for a limit to human lifespan](http://www.nature.com/nature/journal/vaop/ncurrent/full/nature19793.html)" which received wide publicity, by [nature itself](http://www.nature.com/news/human-age-limit-claim-sparks-debate-1.20750), the [New York Times](http://www.nytimes.com/2016/10/06/science/maximum-life-span-study.html), the [Atlantic](http://www.theatlantic.com/science/archive/2016/10/humans-wont-ever-live-far-beyond-115-years/502967/), [the Guardian](https://www.theguardian.com/science/2016/oct/05/human-lifespan-has-hit-its-natural-limit-research-suggests), and [the BBC](http://www.bbc.co.uk/news/health-37552116) to name but a few. However some of the methods in this paper have been criticised:
+
+<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">This <a href="https://twitter.com/nature">@nature</a> paper should be renamed ‘Evidence for a limit to Peer-Review’ <br><br>(ht <a href="https://twitter.com/StuartBuck1">@StuartBuck1</a>)<a href="https://t.co/OsHzPEZScV">https://t.co/OsHzPEZScV</a></p>&mdash; Amitabh Chandra (@amitabhchandra2) <a href="https://twitter.com/amitabhchandra2/status/784373386826944512">October 7, 2016</a></blockquote> 
+
+<blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr">So, Nature paper on &#39;human lifespan limit&#39; makes this inference from those TWO points at the very end!? Total toss. <a href="https://t.co/p1L8FnH9Cw">https://t.co/p1L8FnH9Cw</a> <a href="https://t.co/v7P9YMrJxM">pic.twitter.com/v7P9YMrJxM</a></p>&mdash; Stuart Ritchie (@StuartJRitchie) <a href="https://twitter.com/StuartJRitchie/status/784319415038844929">October 7, 2016</a></blockquote>
+
+In this analysis I look at figure 2 specifically which argues that the maximum age of death has plateaued.
+
+I downloaded the data from the [International Database on Longevity
+at the Max Planck Institute for Demographic Research](http://www.supercentenarians.org). The terms of the data access do not permit third party sharing so the raw data is not uploaded to GitHub but you can download it yourself if you want to rerun the following analyses.
+
+First I load the data into R, tidy up some of the columns, and subset to the same individuals used the in paper. (Not sure why they didn't just use all 668 rather than just 534). Here is the breakdown by country:
+```{r warning = FALSE, message = FALSE}
+library(data.table)
+library(ggplot2)
+
+# load in data
+data.files <- list.files(path = "raw-data")
+stopifnot(length(data.files) > 0)
+
+age.data <- data.table()
+i = 0
+
+for (file in data.files){
+  i <- i+1
+  temp <- fread(paste0("raw-data/",file))
+  
+  age.data <- rbind(age.data, temp)
+}
+
+# correct column names
+setnames(age.data, make.names(colnames(age.data)))
+
+# extract year of death only
+age.data$death_year <- as.numeric(gsub("[0-9]+/[0-9]+/", "", age.data$Date.of.death))
+age.data$age_inyears <- age.data$Age.days. / 365.25
+
+full.age.data <- age.data
+
+# subset to only people with year of death in certian countries as used by the paper
+age.data <- age.data[Country.of.death %in% c("FRA","GBR","JPN","USA")]
+
+# check the same number of people as in the paper
+age.data[, .N, by = Country.of.death]
+```
+
+
+Now let's recreate figure 2A.
+```{r warning=FALSE}
+# define function for getting 2nd highest value, 3rd highest etc.
+maxN <- function(x, N=2){
+  len <- length(x)
+  if(N>len){
+    warning('N greater than length(x)')
+    return(as.numeric(NA))
+  }
+  sort(x,partial=len-N+1)[len-N+1]
+}
+
+# calculate mean, Xth maximum etc summary values for each year of death
+summarised <- age.data[,.(mean_age = mean(age_inyears),
+                    n = .N,
+                    sem = sd(age_inyears)/.N,
+                    maximum = max(age_inyears),
+                    second_maximum = maxN(age_inyears, 2),
+                    third_maximum = maxN(age_inyears, 3),
+                    fourth_maximum = maxN(age_inyears, 4),
+                    fifth_maximum = maxN(age_inyears, 5),
+                    sixth_maximum = maxN(age_inyears, 6)),
+                 by = death_year]
+
+# Repoduce Figure 2A
+ggplot(summarised, aes(x=death_year, y=maximum)) +
+  geom_point() +
+  xlab("Year of Death") +
+  ylab("Maximum Reported Age at Death")
+```
+
+The authors of the paper fitted two separate regression lines to this data arguing that after 1995 there was a change in the trend. I have not added any regression lines so you can decide for yourself from the data. They rightly note that due to the fact that each of these data points is just a single individual the apparent plateau they observe could simply be random fluctuation. To strengthen their argument they looked at the 2nd highest reported age at death, 3rd highest etc and claimed that these series showed the same pattern. However they only plotted the actual data points for the 1st highest and just plotted cubic smoothing splines for the remaining. Below I plot each series individually and I think it's quite clear that for the fourth, fifth and sixth maximum series there is very limited evidence of a plateau and fitting a cubic spline rather than a straight line could be misleading / overfitting.
+
+```{r warning=FALSE, fig.height=7, fig.width=7}
+# Figure 2B
+summary_melt <- melt(summarised, id.vars=c("death_year","mean_age","n","sem"))
+summary_melt <- summary_melt[!is.na(value)]
+
+# Recreate figure 2A for each maximum type
+ggplot(summary_melt, aes(death_year, value)) +
+  facet_wrap(~ variable, ncol = 2, scales="free") +
+  geom_point() +
+  xlab("Year of Death") +
+  ylab("Age at Death")
+  #geom_smooth(method = "lm", formula = y ~ splines::bs(x, degree=3), se=FALSE, size=0.5) +
+  #geom_smooth(method = "lm", colour="red", se=FALSE, size=0.5)
+```
+
+They also used all individuals in the dataset to calculate mean age of death and used this to argue that the annual average age of supercentenarians had not increased since 1968 (the start of the dataset). I recreate their plot below but add error bars representing the standard error of the mean for each point to visualise the uncertainty in the values.
+```{r warning=FALSE}
+# Figure 2C
+ggplot(summarised, aes(x=death_year, y=mean_age)) +
+  geom_errorbar(aes(ymin=mean_age-sem, ymax=mean_age+sem), width=.1) +
+  geom_point() +
+  xlab("Year of Death") +
+  ylab("Mean Age at Death") +
+  geom_smooth(method = "lm", formula = y ~ splines::bs(x, degree=3), se=FALSE)
+```
+You can see that for the earlier points there are no error bars, this is because there is only a single data point for those years! It is therefore quite misleading to give each mean equal weighting by fitting a cubic spline to the means alone. Below I recreate the graph but using the whole dataset.
+
+```{r}
+p <- ggplot(age.data, aes(x=death_year, y=age_inyears)) +
+  geom_point(alpha=0.3) +
+  xlab("Year of Death") +
+  ylab("Age at Death")
+
+#plot(age.data$death_year, age.data$age_inyears)
+#lines(smooth.spline(age.data$death_year, age.data$age_inyears), col="red")
+
+q <- p + geom_smooth(method = "lm", formula = y ~ splines::bs(x, degree=3))
+q
+```
+
+In this form the uncertainty in the first few data points is much clearer, and the dip pattern they fitted is much less convincing. I would argue that a linear regression fits the data just as well and gives an increase of 0.87 per year.
+
+```{r}
+q <- p + 
+    geom_smooth(method = "lm", colour="red") + 
+    annotate("text", x = 1975, y = 121,
+             label = paste("gradient =",format(coef(lm(death_year~age_inyears, age.data))[2], digits=3)))
+q
+
+```
+
+Of course whether or not there is a plateau would be clearer if there was data beyond 2006, given it is now a decade on there should be some new data available somewhere..
