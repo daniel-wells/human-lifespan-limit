@@ -57,6 +57,7 @@ full.age.data <- age.data
 
 # subset to only people with year of death in certian countries as used by the paper
 age.data <- age.data[Country.of.death %in% c("FRA","GBR","JPN","USA")]
+age.data.crop <- age.data[Country.of.death %in% c("GBR","USA") & death_year > 1979 & death_year < 2004]
 
 # check the same number of people as in the paper
 age.data[, .N, by = Country.of.death]
@@ -87,6 +88,17 @@ summarised <- age.data[,.(mean_age = mean(age_inyears),
                     sixth_maximum = maxN(age_inyears, 6)),
                  by = death_year]
 
+summarised.crop <- age.data.crop[,.(mean_age = mean(age_inyears),
+                    n = .N,
+                    sem = sd(age_inyears)/.N,
+                    maximum = max(age_inyears),
+                    second_maximum = maxN(age_inyears, 2),
+                    third_maximum = maxN(age_inyears, 3),
+                    fourth_maximum = maxN(age_inyears, 4),
+                    fifth_maximum = maxN(age_inyears, 5),
+                    sixth_maximum = maxN(age_inyears, 6)),
+                 by = death_year]
+
 # Repoduce Figure 2A
 ggplot(summarised, aes(x=death_year, y=maximum)) +
   geom_point() +
@@ -94,15 +106,40 @@ ggplot(summarised, aes(x=death_year, y=maximum)) +
   ylab("Maximum Reported Age at Death")
 ```
 
-The authors of the paper fitted two separate regression lines to this data arguing that after 1995 there was a change in the trend. I have not added any regression lines so you can decide for yourself from the data. They rightly note that due to the fact that each of these data points is just a single individual the apparent plateau they observe could simply be random fluctuation. To strengthen their argument they looked at the 2nd highest reported age at death, 3rd highest etc and claimed that these series showed the same pattern. However they only plotted the actual data points for the 1st highest and just plotted cubic smoothing splines for the remaining. Below I plot each series individually and I think it's quite clear that for the fourth, fifth and sixth maximum series there is very limited evidence of a plateau and fitting a cubic spline rather than a straight line could be misleading / overfitting.
+The authors of the paper fitted two separate regression lines to this data arguing that after 1995 there was a change in the trend (a seemingly arbitrary choice of breakpoint). I have not added any regression lines so you can decide for yourself from the data. They rightly note that due to the fact that each of these data points is just a single individual the apparent plateau they observe could simply be random fluctuation. 
 
+## 2nd, 3rd etc maximums {.tabset}
+So to strengthen their argument they looked at the 2nd highest reported age at death, 3rd highest etc and claimed that these series showed the same pattern. However they only plotted the actual data points for the 1st highest and just plotted cubic smoothing splines for the remaining. Below I plot each series individually and I think it's quite clear that for the fourth, fifth and sixth maximum series there is very limited evidence of a plateau and fitting a cubic spline rather than a straight line could be misleading / overfitting.
+
+There does seem to be a slight tendency for the last two or three points (2004, 2005, and 2006) to be lower. However, there's another problem, it turns out that the data was collected over different time periods for different countries (see table below) which could explain the apparent recent dip in maximum age of death. For example, the data from 2006 is only from the UK whose population is only one tenth of the total source population of the 2003 data. For the most recent data (2004 onwards) we're looking at a much smaller source population and so we're less likely to see extreme high values. It's not really fair to compare years with uneven data coverage like this so I subsetted the data for the USA and UK only and a death year between 1980 & 2003 inclusive and made alternate plots which show the absence of a plateau even clearer.
+
+Country | Start year | End year | Current Population (millions)
+--------|------------|----------|-------------------
+France  | 1987       | 2003     | 66
+USA     | 1980       | 2003     | 319
+UK      | 1968       | 2006     | 64
+Japan   | 1996       | 2005     | 127
+
+### All 4 countries
 ```{r warning=FALSE, fig.height=7, fig.width=7}
 # Figure 2B
 summary_melt <- melt(summarised, id.vars=c("death_year","mean_age","n","sem"))
 summary_melt <- summary_melt[!is.na(value)]
 
+summary_melt.crop <- melt(summarised.crop, id.vars=c("death_year","mean_age","n","sem"))
+summary_melt.crop <- summary_melt.crop[!is.na(value)]
+
 # Recreate figure 2A for each maximum type
 ggplot(summary_melt, aes(death_year, value)) +
+  facet_wrap(~ variable, ncol = 2, scales="free") +
+  geom_point() +
+  xlab("Year of Death") +
+  ylab("Age at Death")
+```
+
+### Cropped Subset
+```{r warning=FALSE, fig.height=7, fig.width=7}
+ggplot(summary_melt.crop, aes(death_year, value)) +
   facet_wrap(~ variable, ncol = 2, scales="free") +
   geom_point() +
   xlab("Year of Death") +
@@ -111,7 +148,10 @@ ggplot(summary_melt, aes(death_year, value)) +
   #geom_smooth(method = "lm", colour="red", se=FALSE, size=0.5)
 ```
 
-They also used all individuals in the dataset to calculate mean age of death and used this to argue that the annual average age of supercentenarians had not increased since 1968 (the start of the dataset). I recreate their plot below but add error bars representing the standard error of the mean for each point to visualise the uncertainty in the values.
+## Mean age of death {.tabset}
+
+In an alternate approach they used all individuals in the dataset to calculate mean age of death and used this to argue that the annual average age of supercentenarians had not increased since 1968 (the start of the dataset). I recreate their plot below but add error bars representing the standard error of the mean for each point to visualise the uncertainty in the values.
+
 ```{r warning=FALSE}
 # Figure 2C
 ggplot(summarised, aes(x=death_year, y=mean_age)) +
@@ -121,7 +161,12 @@ ggplot(summarised, aes(x=death_year, y=mean_age)) +
   ylab("Mean Age at Death") +
   geom_smooth(method = "lm", formula = y ~ splines::bs(x, degree=3), se=FALSE)
 ```
-You can see that for the earlier points there are no error bars, this is because there is only a single data point for those years! It is therefore quite misleading to give each mean equal weighting by fitting a cubic spline to the means alone. Below I recreate the graph but using the whole dataset.
+
+You can see that for the earlier points there are no error bars, this is because there is only a single data point for those years! It is therefore quite misleading to give each mean equal weighting by fitting a cubic spline to point estimates of the means alone.
+
+## All the data points
+
+A perhaps fairer approach is to recreate the graphs but using the whole dataset.
 
 ```{r}
 p <- ggplot(age.data, aes(x=death_year, y=age_inyears)) +
