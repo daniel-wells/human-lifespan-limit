@@ -31,6 +31,8 @@ First I load the data into R, tidy up some of the columns, and subset to the sam
 ```{r warning = FALSE, message = FALSE}
 library(data.table)
 library(ggplot2)
+library(extRemes) # Generalised Extreme Value distribution functions
+library(scales) # to define double log transform
 
 # load in data
 data.files <- list.files(path = "raw-data")
@@ -217,4 +219,196 @@ all_data +
 
 ```
 
-Of course whether or not there is a plateau would be clearer if there was data beyond 2006, given it is now a decade on there should be some new data available somewhere..
+# Sample Sizes
+In the study the authors analysed maximum reported age of death (MRAD) over different years but the data for each year was from a different combination of countries and hence the sample size varies. One therefore might expect that the MRAD could change solely due to variation in the sample size (we are more likely to see high maximums when there is more data). Here I investigate the effect of using different sample sizes on the MRAD.
+
+To get an equation for the distribution of age at death we can fit a [generalised extreme value distribution](https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution) to data from the UK [Office of National Statistics](http://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/articles/mortalityinenglandandwales/2012-12-17) (which fits much better than a normal distribution).
+```{r}
+# Take data from UK Office of National Statistics life tables to fit distribution
+# http://www.ons.gov.uk/generator?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/articles/mortalityinenglandandwales/2012-12-17/74c4dc50&format=csv
+
+# And http://www.ons.gov.uk/generator?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/articles/mortalityinenglandandwales/2012-12-17/4b665795&format=csv
+
+# load data
+life_expectancy <- fread("chart7628369219653552718.csv") # females
+life_expectancy_male <- fread("chart182252582428823712.csv") # males
+
+# convert to numeric
+life_expectancy$`2010` <- as.numeric(life_expectancy$`2010`) + as.numeric(life_expectancy_male$`2010`)
+life_expectancy$Age <- as.numeric(life_expectancy$Age)
+
+# convert histogram values to sample data
+deaths <- numeric()
+for (Age2 in life_expectancy$Age){
+  deaths <- c(deaths, rep(as.numeric(Age2), life_expectancy[Age == Age2]$`2010`))
+}
+
+# fit to a generalised extreme value distribution
+fitted_distribution <- fevd(-deaths)
+fitted_parameters <- fitted_distribution$results$par
+
+
+plot(fitted_distribution, type = "density", xlab = "Negative Age at death", main = "")
+plot(fitted_distribution, type = "qq2")
+
+params <- fitted_distribution$results$par
+print(fitted_distribution$results$par)
+```
+
+We will also need to estimate the sample size (number of deaths) for each year in each country. For this I multiplied the world bank crude death rate by population size. We can then see how the total sample size varies over time in the original papers analysis.
+
+```{r warning = FALSE, message = FALSE}
+
+# Calculate sample size as number of deaths for each year-country, by multiplying crude death rate by populatoin size
+
+# from http://api.worldbank.org/v2/en/indicator/SP.DYN.CDRT.IN?downloadformat=csv
+death.rate <- fread("API_SP.DYN.CDRT.IN_DS2_en_csv_v2.csv")
+death.rate <- death.rate[`Country Code` %in% c("GBR","FRA","JPN","USA"),]
+death.rate$`Indicator Name` <- NULL
+death.rate$`Indicator Code` <- NULL
+death.rate$`Country Name` <- NULL
+
+death.rate <- melt(death.rate, id.vars = c("Country Code"), variable = "year", value = "death_rate")
+setnames(death.rate,"Country Code","country")
+death.rate$year <- as.numeric(as.character(death.rate$year))
+
+# from http://api.worldbank.org/v2/en/indicator/SP.POP.TOTL?downloadformat=csv
+population <- fread("API_SP.POP.TOTL_DS2_en_csv_v2.csv")
+population <- population[`Country Code` %in% c("GBR","FRA","JPN","USA"),]
+population$`Indicator Name` <- NULL
+population$`Indicator Code` <- NULL
+population$`Country Name` <- NULL
+
+population <- melt(population, id.vars = c("Country Code"), variable = "year", value = "population")
+setnames(population, "Country Code", "country")
+population$year <- as.numeric(as.character(population$year))
+
+setkey(population, "year", "country")
+setkey(death.rate, "year", "country")
+deaths <- population[death.rate]
+
+deaths <- deaths[(country=="GBR" & year >= 1968 & year <= 2006) | 
+             (country=="FRA" & year >= 1987 & year <= 2003) |
+             (country=="USA" & year >= 1980 & year <= 2003) |
+             (country=="JPN" & year >= 1996 & year <= 2007)]
+deaths$population <- as.numeric(deaths$population)
+deaths$death_rate <- as.numeric(deaths$death_rate)
+deaths$deaths <- round((deaths$death_rate / 1000) * deaths$population)
+deaths.summary <- deaths[, .(deaths = sum(deaths)), by = year]
+
+qplot(deaths.summary$year, deaths.summary$deaths,
+      geom = "point",
+      xlab = "Year",
+      ylab = "Total deaths")
+```
+
+The trend is similar to the regression lines they fit and so any bias from sample size would result in an overestimate in their favour for the gradient of both of the regression lines. However the effect of sample size on MRAD is probably not linear - maybe the population sizes used are large enough that the MRAD is effectively independent. With the sample size and an equation for the distribution of age at death we can now calculate the probability distribution of MRAD (more formally the nth [order statistic](https://en.wikipedia.org/wiki/Order_statistic)) for different sample sizes. First let us look at the distributions of MRAD for the estimated minimum and maximum sample size used in the study. 
+
+```{r}
+
+# define k=1 (minimum) order statistic of minimum extream value distribution
+order_pdf_k1_evd <- function(age, sample.size){
+  sample.size *
+    (1-pevd(age, loc = params['location'], scale = params['scale'], shape = params['shape']))^(sample.size - 1) * 
+    devd(age, loc = params['location'], scale = params['scale'], shape = params['shape'])
+}
+
+max.sample.size = max(deaths.summary$deaths)
+min.sample.size = min(deaths.summary$deaths)
+
+# compare the probability density distributions for the minimum and maximum sample sizes used
+age = seq(-109, -115, -0.02)
+
+max.min.comparison <- data.table(
+  density = c(order_pdf_k1_evd(age, sample.size = max.sample.size),
+              order_pdf_k1_evd(age, sample.size = min.sample.size)),
+  maximum.age = -c(age, age),
+  sample.size = as.factor(rep(c(max.sample.size, min.sample.size), each = length(age))))
+
+# find modes of both distributions
+mode.min = -optimize(order_pdf_k1_evd,
+                     interval = c(-100, -120),
+                     sample.size = min.sample.size,
+                     maximum = TRUE)$maximum
+
+mode.max = -optimize(order_pdf_k1_evd,
+                     interval = c(-100, -120),
+                     sample.size = max.sample.size,
+                     maximum = TRUE)$maximum
+
+ggplot(max.min.comparison, aes(x = maximum.age, y = density, group = sample.size, colour = sample.size) ) +
+  geom_line() +
+  geom_vline(xintercept = mode.max, colour="turquoise", linetype = "dashed") +
+  geom_vline(xintercept = mode.min, colour="red", linetype = "dashed") +
+  annotate("text", label = paste(signif(mode.max - mode.min, digits = 3), "years"), x = 114, y = 0.6) +
+  xlab("Maximum Reported Age at Death") + ylab("Probability Density")
+```
+
+This shows we might expect a difference of over a year in the MRAD due to the change in sample size alone (dashed lines indicate mode). We can also look at how the modal MRAD changes over many different sample sizes.
+
+```{r}
+# plot most likely maximum observed value as a function of sample size
+
+# Linear on log scale sampling
+sample.sizes = matrix(unique(round(exp(runif(300, 0, 16)))))
+
+modal_MRAD <- apply(sample.sizes, 1,function(x) optimize(order_pdf_k1_evd, interval = c(-90, -120), sample.size = x, maximum = TRUE)$maximum)
+
+MRAD_samplesize <- data.table(sample.size = sample.sizes[, 1], modal.maximum = - modal_MRAD)[order(-sample.size)]
+
+ggplot(MRAD_samplesize, aes(x = sample.size, y = modal.maximum)) +
+  geom_line() +
+  ylim(108, 113) + 
+  geom_vline(xintercept = min.sample.size, linetype = "dashed") +
+  geom_vline(xintercept = max.sample.size, linetype = "dashed") +
+  xlab("Sample Size") + ylab("Modal Maximum Age")
+```
+
+The modal MRAD increases sharply at first and then starts to plateau once the sample size increases to millions of deaths. The dashed lines indicate the estimated minimum and maximum sample sizes used in the study. A double log distribution fits this curve well for reasonable sample sizes (>20).
+
+```{r}
+# plot on double log x scale (straight line)
+
+# define transformation
+double_log_trans <- function(base = exp(1)){
+trans <- function(x) log((log(x, base)), base)
+inv <- function(x) (base^(base^x))
+trans_new("double_log", trans, inv, log_breaks(base = base), domain = c(1e-100, Inf))
+}
+
+# plot
+ggplot(MRAD_samplesize[sample.size > 20], aes(x = sample.size, y = modal.maximum)) +
+  geom_point() +
+  scale_x_continuous(trans = "double_log", breaks = 10^(2:7)) +
+  xlab("Sample Size (double log scale)") +
+  ylab("Modal maximum age") +
+  geom_smooth(method = "lm", size = 0.5)
+```
+
+We can also plot the difference from the mean MRAD for each year in the study based on changing sample size alone.
+
+```{r}
+
+sample.sizes.actual = matrix(deaths.summary$deaths)
+
+MRAD_expected <- apply(sample.sizes.actual, 1, function(x) optimize(order_pdf_k1_evd, interval = c(-90, -120), sample.size = x, maximum = TRUE)$maximum)
+
+MRAD_expected_by_samplesize <- data.table(sample.size = sample.sizes.actual[, 1], modal.maximum = - MRAD_expected)
+MRAD_expected_by_samplesize$death_year <- deaths.summary$year
+
+# to adjust points?
+# MRAD_expected_by_samplesize$demeaned <- as.numeric(scale(MRAD_expected_by_samplesize$modal.maximum, scale = FALSE))
+# setkey(MRAD_expected_by_samplesize, death_year)
+# setkey(summarised, death_year)
+# summarised <- MRAD_expected_by_samplesize[summarised]
+# summarised$adjusted_maximum <- summarised$maximum - summarised$demeaned
+
+qplot(MRAD_expected_by_samplesize$death_year,
+      scale(MRAD_expected_by_samplesize$modal.maximum, scale = FALSE),
+      xlab = "Year",
+      ylab = "Mean-Centered MRAD")
+```
+
+Hence the sample sizes used would probably have a noticeable although small effect on the MRAD and a correction would slightly weaken the authors conclusions by reducing the gradient of both regression lines. Even though the effect is moderate it would have been nice to see an analysis of this type reported in the study.
+
+Whether or not there is a genuine plateau rather than a temporary fluctuation would be clearer if there was more than 7-10 years of data beyond the breakpoint, given it is now a decade on perhaps there is new data available, for example from the [USA Death Master File](https://classic.ntis.gov/products/ssa-dmf/).
