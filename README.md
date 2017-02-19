@@ -18,49 +18,11 @@ So, Nature paper on 'human lifespan limit' makes this inference from those TWO p
 </p>
 — Stuart Ritchie (@StuartJRitchie) <a href="https://twitter.com/StuartJRitchie/status/784319415038844929">October 7, 2016</a>
 </blockquote>
-In this analysis I look at figure 2 specifically which argues that the maximum age of death has plateaued.
+In this analysis I look at figure 2 specifically which argues that the maximum age of death has plateaued. You can view the code used in this analysis at [age-limit-analysis.Rmd](age-limit-analysis.Rmd).
 
 I downloaded the data from the [International Database on Longevity at the Max Planck Institute for Demographic Research](http://www.supercentenarians.org). The terms of the data access do not permit third party sharing so the raw data is not uploaded to GitHub but you can download it yourself if you want to rerun the following analyses.
 
 First I load the data into R, tidy up some of the columns, and subset to the same individuals used the in paper. (Not sure why they didn't just use all 668 rather than just 534). Here is the breakdown by country:
-
-``` r
-library(knitr)
-opts_chunk$set(echo=FALSE,fig.width=10, fig.asp=1, fig.retina=2, message=FALSE, warning=FALSE)
-library(data.table)
-library(ggplot2)
-library(extRemes) # Generalised Extreme Value distribution functions
-library(scales) # to define double log transform
-
-# load in data
-data.files <- list.files(path = "raw-data")
-stopifnot(length(data.files) > 0)
-
-age.data <- data.table()
-i = 0
-
-for (file in data.files){
-  i <- i + 1
-  temp <- fread(paste0("raw-data/", file))
-  
-  age.data <- rbind(age.data, temp)
-}
-
-# correct column names
-setnames(age.data, make.names(colnames(age.data)))
-
-# extract year of death only
-age.data$death_year <- as.numeric(gsub("[0-9]+/[0-9]+/", "", age.data$Date.of.death))
-age.data$age_inyears <- age.data$Age.days. / 365.25
-
-full.age.data <- age.data
-
-# subset to only people with year of death in certian countries as used by the paper
-age.data <- age.data[Country.of.death %in% c("FRA","GBR","JPN","USA")]
-
-# check the same number of people as in the paper
-age.data[, .N, by = Country.of.death]
-```
 
     ##    Country.of.death   N
     ## 1:              GBR  66
@@ -72,11 +34,11 @@ Now let's recreate figure 2A.
 
 ### Raw Data
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-2-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-2-1.png" width="672" />
 
 ### With regression lines
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-3-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-3-1.png" width="672" />
 
 The authors of the paper fitted two separate regression lines to this data arguing that after 1995 there was a change in the trend (a seemingly arbitrary choice of breakpoint - the choice of a broken vs linear trend has been analysed [elsewhere](https://github.com/philippberens/lifespan)).
 
@@ -97,7 +59,7 @@ You can see from the confidence intervals on the regression lines that the gradi
 
 However this analysis is quite sensitive to the choice of breakpoint. In the above mentioned review response the authors re-analysed the data and found that a breakpoint of 1999 was a better fit. Although the package used ("segmented") fits a continuous piecewise regression, I will continue using the method above to illustrate a different choice of date anyway. Replotting the regression lines using this breakpoint shows the confidence intervals more clearly supporting the downward trend and the p-value (with H0 = 1st segment gradient) is now significant at the 0.05 threshold. The upper 95% confidence interval is now −0.2 suggesting a downward trend (rather than a plateau).
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-5-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-5-1.png" width="672" />
 
     ## First segment gradient point estimate & confidence intervals:
 
@@ -142,7 +104,7 @@ Mean age of death
 
 In another alternate approach the authors looked at all individuals in the dataset to calculate mean age of death and concluded that the annual average age of supercentenarians had not increased since 1968 (the start of the dataset). I recreate their plot below but with the addition of error bars representing the standard error of the mean for each point in order to visualise the uncertainty in the values.
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-9-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-9-1.png" width="672" />
 
 You can see that for the earlier points there are no error bars, this is because there is only a single data point for those years. It is therefore quite misleading to give each mean equal weighting by fitting a cubic spline to point estimates of the means alone.
 
@@ -150,41 +112,41 @@ A perhaps fairer approach is to recreate the graphs but using the whole dataset 
 
 ### Cubic Spline
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-10-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-10-1.png" width="672" />
 
 ### Linear Regression
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-11-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-11-1.png" width="672" />
 
 Sample Sizes
 ============
 
 In the study the authors analysed maximum reported age of death (MRAD) over different years but the data for each year was from a different combination of countries and hence the sample size varies. One therefore might expect that the MRAD could change solely due to variation in the sample size (we are more likely to see high maximums when there is more data). Here I investigate the effect of using different sample sizes on the MRAD.
 
-To get an equation for the distribution of age at death we can fit a [generalised extreme value distribution](https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution) to data from the UK [Office of National Statistics](http://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/articles/mortalityinenglandandwales/2012-12-17) (which fits much better than a normal distribution). <img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-12-1.png" width="960" /><img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-12-2.png" width="960" />
+To get an equation for the distribution of age at death we can fit a [generalised extreme value distribution](https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution) to data from the UK [Office of National Statistics](http://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/articles/mortalityinenglandandwales/2012-12-17) (which fits much better than a normal distribution). <img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-12-1.png" width="672" /><img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-12-2.png" width="672" />
 
     ##    location       scale       shape 
     ## -86.6589101   9.8271019   0.0372343
 
 We will also need to estimate the sample size (number of deaths) for each year in each country. For this I multiplied the world bank crude death rate by population size. We can then see how the total sample size varies over time in the original papers analysis.
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-13-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-13-1.png" width="672" />
 
 The trend is similar to the regression lines they fit and so any bias from sample size would result in an overestimate in their favour for the gradient of both of the regression lines. However the effect of sample size on MRAD is probably not linear - maybe the population sizes used are large enough that the MRAD is effectively independent. With the sample size and an equation for the distribution of age at death we can now calculate the probability distribution of MRAD (more formally the nth [order statistic](https://en.wikipedia.org/wiki/Order_statistic)) for different sample sizes. First let us look at the distributions of MRAD for the estimated minimum and maximum sample size used in the study.
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-14-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-14-1.png" width="672" />
 
 This shows we might expect a difference of over a year in the MRAD due to the change in sample size alone (dashed lines indicate mode). We can also look at how the modal MRAD changes over many different sample sizes.
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-15-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-15-1.png" width="672" />
 
 The modal MRAD increases sharply at first and then starts to plateau once the sample size increases to millions of deaths. The dashed lines indicate the estimated minimum and maximum sample sizes used in the study. A double log distribution fits this curve well for reasonable sample sizes (&gt;20).
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png" width="672" />
 
 We can also plot the difference from the mean MRAD for each year in the study based on changing sample size alone.
 
-<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-17-1.png" width="960" />
+<img src="age-limit-analysis_files/figure-markdown_github/unnamed-chunk-17-1.png" width="672" />
 
 Hence the sample sizes used would probably have a noticeable although small effect on the MRAD and a correction would slightly weaken the authors conclusions by reducing the gradient of both regression lines. Even though the effect is moderate it would have been nice to see an analysis of this type reported in the study.
 

@@ -1,18 +1,9 @@
 ---
 title: "Reanalysis of the evidence for a limit to human lifespan"
 author: "Daniel Wells"
-date: "`r Sys.Date()`"
-output: 
-  html_notebook: 
-    code_folding: hide
-    theme: cosmo
+date: "2016-11-01"
+output: github_document
 ---
-
-<style>
-  .main-container {
-    max-width: 700px !important;
-  }
-</style>
 
 <script src="http://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
@@ -22,13 +13,15 @@ Recently a paper was published in the journal Nature titled "[Evidence for a lim
 
 <blockquote class="twitter-tweet" data-cards="hidden" data-lang="en"><p lang="en" dir="ltr">So, Nature paper on &#39;human lifespan limit&#39; makes this inference from those TWO points at the very end!? Total toss. <a href="https://t.co/p1L8FnH9Cw">https://t.co/p1L8FnH9Cw</a> <a href="https://t.co/v7P9YMrJxM">pic.twitter.com/v7P9YMrJxM</a></p>&mdash; Stuart Ritchie (@StuartJRitchie) <a href="https://twitter.com/StuartJRitchie/status/784319415038844929">October 7, 2016</a></blockquote>
 
-In this analysis I look at figure 2 specifically which argues that the maximum age of death has plateaued.
+In this analysis I look at figure 2 specifically which argues that the maximum age of death has plateaued. You can view the code used in this analysis at [age-limit-analysis.Rmd](age-limit-analysis.Rmd).
 
 I downloaded the data from the [International Database on Longevity
 at the Max Planck Institute for Demographic Research](http://www.supercentenarians.org). The terms of the data access do not permit third party sharing so the raw data is not uploaded to GitHub but you can download it yourself if you want to rerun the following analyses.
 
 First I load the data into R, tidy up some of the columns, and subset to the same individuals used the in paper. (Not sure why they didn't just use all 668 rather than just 534). Here is the breakdown by country:
-```{r warning = FALSE, message = FALSE}
+```{r echo=FALSE, warning = FALSE, message = FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE,fig.width=7, fig.asp=1, fig.retina=2, message=FALSE, warning=FALSE)
 library(data.table)
 library(ggplot2)
 library(extRemes) # Generalised Extreme Value distribution functions
